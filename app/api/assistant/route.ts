@@ -1,17 +1,28 @@
 import { AssistantResponse } from 'ai';
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import fs from 'fs';
-import path from 'path';
-import { tmpdir } from 'os';
 
 const openai_assist = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
 });
+async function getOrCreateVectorStore(openai_assist: OpenAI) {
+  const vectorStoreName = 'Uploaded Files';
+  const existingVectorStores = await openai_assist.beta.vectorStores.list();
+
+  let vectorStore = existingVectorStores.data.find(store => store.name === vectorStoreName);
+
+  if (!vectorStore) {
+    vectorStore = await openai_assist.beta.vectorStores.create({
+      name: vectorStoreName,
+    });
+  }
+
+  return vectorStore.id;
+}
 
 export async function POST(req: Request) {
   const contentType = req.headers.get('Content-Type') || '';
-
+  const assistant_id = process.env.ASSISTANT_ID ?? '';
   try {
     if (contentType.includes('application/json')) {
       const json = await req.json();
@@ -21,34 +32,24 @@ export async function POST(req: Request) {
       const message = parsedData.message;
       const threadIdtemp = parsedData.threadId || null;
       const appended = parsedData.isAppended === 'true';
-      let uploadedFile: any = null;
       let file: { name: string; size: number; type: string; content: string } | null = null;
-      let createdMessage: any = null;
       if (appended) {
         file = parsedData.file ? JSON.parse(parsedData.file) : null;
 
         console.log('Message:', message);
         console.log('Thread ID:', threadIdtemp);
         if (file) {
-          console.log('Received file:', {
-            path: file.name,
-            name: file.name,
-            size: file.size,
-            type: file.type,
+          const fileContent = Buffer.from(file.content, 'base64');
+          const vectorStoreId = await getOrCreateVectorStore(openai_assist);
+          const fileLike = new File([fileContent], file.name, { type: file.type });
+          const uploadedFile = await openai_assist.beta.vectorStores.fileBatches.uploadAndPoll(vectorStoreId, {
+            files: [fileLike],
           });
-            const uploadsDir = tmpdir(); 
-            const filePath = path.join(uploadsDir, file.name);
-            const fileContent = Buffer.from(file.content, 'base64'); 
-            fs.writeFileSync(filePath, fileContent);
-            console.log('File saved to:', filePath);
-            console.log('File:', fileContent);
-            uploadedFile = await openai_assist.files.create({
-              file: fs.createReadStream(filePath),
-              purpose: 'assistants',
-            });
-
-  
-            console.log('Thread tool resources:', uploadedFile.id);
+          await openai_assist.beta.assistants.update(assistant_id, {
+            tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
+          });
+          console.log('Vector Store created and file uploaded:', uploadedFile);
+          
         } else {
           console.log('No file uploaded');
         }
@@ -58,23 +59,16 @@ export async function POST(req: Request) {
 
       const threadId = threadIdtemp ?? (await openai_assist.beta.threads.create({})).id;
 
-      if (appended){
-         createdMessage = await openai_assist.beta.threads.messages.create(threadId, {
-          role: 'user',
-          content: message?.toString() || '',
-          attachments: [{ file_id: uploadedFile?.id, tools: [{ type: 'file_search' }] }],
-        });
-      }
-        else {
-           createdMessage = await openai_assist.beta.threads.messages.create(threadId, {
+
+      const createdMessage = await openai_assist.beta.threads.messages.create(threadId, {
             role: 'user',
             content: message?.toString() || '',
           });
-        }
+       
 
        
 
-        console.log('createdMessage:', createdMessage);
+      console.log('createdMessage:', createdMessage);
 
       return AssistantResponse(
         { threadId, messageId: createdMessage.id },
