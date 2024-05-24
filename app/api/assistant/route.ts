@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       const threadIdtemp = parsedData.threadId || null;
       const appended = parsedData.isAppended === 'true';
       let uploadedFile: any = null;
-      let file: { name: string; size: number; type: string } | null = null;
+      let file: { name: string; size: number; type: string; content: string } | null = null;
       let createdMessage: any = null;
       if (appended) {
         file = parsedData.file ? JSON.parse(parsedData.file) : null;
