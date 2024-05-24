@@ -154,8 +154,9 @@ export function PromptForm({
           onChange={handleFileChange}
         />
           {selectedFile && (
-          <div className="mt-2 ml-10 text-sm text-gray-600">
-            File selected: {selectedFile.name}
+          <div className="mt-2 ml-2 flex items-center text-sm text-gray-600">
+            <span className="font-semibold">File selected: </span>
+            <span className="ml-2">{selectedFile.name}</span>
           </div>
         )}
         <Textarea

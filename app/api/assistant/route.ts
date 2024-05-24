@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import { tmpdir } from 'os';
 
 const openai_assist = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
@@ -35,11 +36,7 @@ export async function POST(req: Request) {
             size: file.size,
             type: file.type,
           });
-            const uploadsDir = path.join(process.cwd(), 'uploads');
-            if (!fs.existsSync(uploadsDir)) {
-              fs.mkdirSync(uploadsDir);
-            }
-  
+            const uploadsDir = tmpdir(); 
             const filePath = path.join(uploadsDir, file.name);
             const fileContent = Buffer.from(file.content, 'base64'); 
             fs.writeFileSync(filePath, fileContent);
